@@ -500,7 +500,7 @@ function renderFlorent(){
     {k:"bord", l:"Tableau de bord"},
     {k:"relecture", l:"Fiches à relire", c:(D.toReview().length||""), hot:D.toReview().length>0},
     {k:"activites", l:"Carte du poste", c:S.data.activites.length},
-    {k:"questions", l:"Questions", c:(answered ? answered+" réponses" : D.qOpen().length||""), hot:answered>0},
+    {k:"questions", l:"Questions", c:(answered ? answered+(answered>1?" réponses":" réponse") : D.qOpen().length||""), hot:answered>0},
     {k:"seances", l:"Séances", c:`${D.siteCount()}/${MAX_SITE} sur site`},
     {k:"nomenclature", l:"Correspondance B21", c:S.data.nomenclature.length},
     {k:"documents", l:"Documents reçus", c:S.data.fichiers.length||""},
