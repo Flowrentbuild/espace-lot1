@@ -601,8 +601,8 @@ function buildExport(){
 }
 function fExport(){
   const md = buildExport();
-  return `<div class="card"><h1>Export des livrables</h1><p class="intro">Les livrables du lot 1 assemblés à partir de l'espace, en Markdown (format ouvert), prêts à déposer sur le serveur de ${esc(S.client)}. Les fiches mises au propre reprennent votre version ; les autres, les notes brutes de Geneviève avec leur statut.</p>
-    <div class="row"><button class="btn primary" data-copy>Copier</button><button class="btn" data-download>Télécharger le fichier .md</button></div></div>
+  return `<div class="card"><h1>Export des livrables</h1><p class="intro">Les livrables du lot 1 assemblés à partir de l'espace, en Markdown (format ouvert). « Déposer dans mon Drive » crée un fichier daté dans votre dossier ${esc(S.client)}, sous-dossier 08-Lot1-exports-espace. Les fiches mises au propre reprennent votre version ; les autres, les notes brutes de Geneviève avec leur statut.</p>
+    <div class="row"><button class="btn primary" data-todrive>Déposer dans mon Drive</button><button class="btn" data-copy>Copier</button><button class="btn" data-download>Télécharger le fichier .md</button></div><div id="drive-out"></div></div>
     <pre class="md" id="md-out">${esc(md)}</pre>`;
 }
 
@@ -837,6 +837,18 @@ function bindPanel(){
   on("[data-addp]", async () => { const t = val("p-new"); if(!t) return; if(await save("prive", newId(), {texte:t}, true)){ const el = document.getElementById("p-new"); if(el) el.value = ""; toast("Note enregistrée"); } });
   on("[data-delp]", async el => { if(el.dataset.c){ await remove("prive", el.dataset.delp); } else { el.dataset.c="1"; el.textContent="Confirmer"; } });
   on("[data-copy]", async () => { try { await navigator.clipboard.writeText(buildExport()); toast("Copié"); } catch(e){ toast("Copie refusée : sélectionnez le texte ci-dessous."); } });
+  on("[data-todrive]", async el => {
+    const out = document.getElementById("drive-out");
+    el.disabled = true; el.textContent = "Dépôt en cours…";
+    const d = new Date(); const pad = n => String(n).padStart(2, "0");
+    const stamp = `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}_${pad(d.getHours())}${pad(d.getMinutes())}`;
+    try {
+      const r = await api({ action:"export", md: buildExport(), stamp });
+      if(r && r.ok){ out.innerHTML = `<div class="notice">Fichier déposé : ${esc(r.nom || "")}${r.lien ? ` · <a href="${esc(r.lien)}" target="_blank" rel="noopener">l'ouvrir dans le Drive</a>` : ""}</div>`; }
+      else { out.innerHTML = `<div class="notice err">${esc(REFUS[r && r.err] || "Le dépôt a été refusé.")}</div>`; }
+    } catch(e){ out.innerHTML = `<div class="notice err">Le dépôt n'a pas abouti. Vérifiez votre connexion et réessayez.</div>`; }
+    el.disabled = false; el.textContent = "Déposer dans mon Drive";
+  });
   on("[data-download]", () => { const blob = new Blob([buildExport()], {type:"text/markdown;charset=utf-8"}); const u = URL.createObjectURL(blob); const lk = document.createElement("a"); lk.href = u; lk.download = `${S.client || "Client"}_Lot1_livrables_${new Date().toISOString().slice(0,10)}.md`; document.body.appendChild(lk); lk.click(); lk.remove(); setTimeout(() => URL.revokeObjectURL(u), 4000); });
   bindMic(P);
 }
