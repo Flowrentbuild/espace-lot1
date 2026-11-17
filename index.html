@@ -166,7 +166,7 @@ const PARTIES = {poste_ad:"Mon poste", affaires:"Suivi d'une affaire, du devis �
 const ETAPES = ["Devis","Commande et ouverture de l'affaire","Achats","Chantier et interventions","Facturation","Clôture et règlement"];
 const ST = {a_ecrire:"À écrire", brouillon:"Brouillon", a_relire:"Envoyée à Florent", a_valider:"À relire et valider", validee:"Validée"};
 const LIVRABLES = {B01:"Guide du poste d'assistante de direction", B03:"Procédures de gestion d'affaires", B04:"Livret d'accueil", B21:"Correspondance des nomenclatures", AUTRE:"Autre"};
-const MAX_SITE = 6;
+const MAX_SITE = 8;
 const COLS = ["activites","fiches","questions","accueil","documents","seances","nomenclature"];
 
 /* ---------- Configuration ---------- */
@@ -574,7 +574,7 @@ function fSeances(){
   const ss = S.data.seances.slice().sort((a,b) => String(a.date).localeCompare(String(b.date)));
   const site = D.siteCount();
   return `<div class="card"><div class="row spread"><h1>Séances</h1><button class="btn primary" data-new-seance>Ajouter une séance</button></div>
-    <p class="intro">Le bon de commande prévoit six demi-journées sur site au maximum. Les séances en visio ne sont pas plafonnées. ${site}/${MAX_SITE} utilisées.</p>
+    <p class="intro">Le bon de commande prévoit six à huit demi-journées sur site. Les séances en visio ne sont pas plafonnées. ${site}/${MAX_SITE} utilisées.</p>
     <div class="bar ${site>=MAX_SITE-1?"warn":""}"><span style="width:${Math.min(100,site/MAX_SITE*100)}%"></span></div></div>
     <div class="items">${ss.map(s => `<div class="item"><div><div class="ttl">${fmtDate(s.date)} · ${s.type==="site"?"Sur site":"En visio"}</div><div class="meta">${esc(s.objet||"")}</div>${s.notes?`<div class="ro" style="margin-top:6px">${nl(s.notes)}</div>`:""}${s.suite?`<div class="meta" style="margin-top:6px"><b>Suite :</b> ${esc(s.suite)}</div>`:""}</div><div class="acts"><button class="btn small" data-edit-seance="${s.id}">Modifier</button></div></div>`).join("") || `<div class="empty">Aucune séance.</div>`}</div>`;
 }
