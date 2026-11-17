@@ -176,7 +176,8 @@ const STORE_KEY = "espace-lot1-code";
 
 /* ---------- État ---------- */
 const S = { code:null, owner:false, ready:false, client:"", ref:"", noms:{genevieve:"", florent:"Florent"}, data:{}, err:null, gSec:"accueil", fSec:"bord", dict:null };
-const ALL = COLS.concat(["prive"]);
+const ALL = COLS.concat(["prive","fichiers"]);
+const MAX_FILE = 15 * 1024 * 1024;
 ALL.forEach(c => S.data[c] = []);
 
 const $ = (sel, el=document) => el.querySelector(sel);
@@ -197,7 +198,7 @@ async function api(payload){
   if(!res.ok) throw new Error("http " + res.status);
   return res.json();
 }
-const REFUS = { code:"Votre code n'est plus valable. Reconnectez-vous.", droits:"Cette partie est réservée à Florent.", taille:"Ce texte est trop long pour être enregistré en une fois.", requete:"La demande n'a pas été comprise." };
+const REFUS = { code:"Votre code n'est plus valable. Reconnectez-vous.", droits:"Cette partie est réservée à Florent.", taille:"Ce texte est trop long pour être enregistré en une fois.", fichier:"Ce fichier dépasse 15 Mo : apportez-le sur clé USB à la prochaine séance.", requete:"La demande n'a pas été comprise." };
 
 /* Un seul enregistrement à la fois : un double clic ne crée pas de doublon. */
 async function save(col, id, data, isNew){
@@ -222,6 +223,26 @@ async function saveNow(col, id, data, isNew){
     return true;
   } catch(e){ showErr("L'enregistrement n'a pas abouti. Vérifiez votre connexion internet et réessayez : votre texte est toujours à l'écran."); return false; }
 }
+/* Envoi d'un fichier : il part directement dans le Drive de Florent. */
+async function upload(docId, file){
+  if(file.size > MAX_FILE){ showErr(REFUS.fichier); return false; }
+  const fd = new FormData();
+  fd.append("payload", JSON.stringify({ code: S.code, action:"upload", doc: docId, nom: file.name, taille: file.size }));
+  fd.append("file", file, file.name);
+  try {
+    const res = await fetch(API, { method:"POST", body: fd });
+    if(!res.ok) throw new Error("http " + res.status);
+    const r = await res.json();
+    if(!r || !r.ok){ showErr(REFUS[r && r.err] || "L'envoi a été refusé."); return false; }
+    S.data.fichiers = S.data.fichiers.filter(f => f.id !== r.id).concat([Object.assign({ id: r.id }, r.data || {})]);
+    const d = S.data.documents.find(x => x.id === docId);
+    if(d && d.statut !== "depose") await saveNow("documents", docId, { statut:"depose" }, false);
+    S.err = null; render();
+    return true;
+  } catch(e){ showErr("L'envoi n'a pas abouti. Vérifiez votre connexion internet et réessayez."); return false; }
+}
+const fmtSize = n => n >= 1048576 ? (n/1048576).toFixed(1).replace(".",",") + " Mo" : Math.max(1, Math.round(n/1024)) + " Ko";
+
 async function remove(col, id){
   try {
     const r = await api({ action:"delete", col, id });
@@ -331,7 +352,7 @@ function bindRail(key){
   document.querySelectorAll("#rail button").forEach(b => b.onclick = () => { S[key] = b.dataset.sec; render(); window.scrollTo({top:0}); });
 }
 const errBox = () => S.err ? `<div class="notice err" role="alert">${esc(S.err)}</div>` : "";
-const guard = () => `<div class="guard"><b>À ne jamais écrire ici :</b> les noms des salariés, leurs pointages, congés, paie ou santé, les mots de passe et les coordonnées bancaires. Désignez les personnes par leur fonction (« le chef de chantier », « le cabinet comptable »). Les fichiers restent sur le serveur de ${esc(S.client)} : indiquez seulement où ils se trouvent.</div>`;
+const guard = () => `<div class="guard"><b>À ne jamais écrire ici :</b> les noms des salariés, leurs pointages, congés, paie ou santé, les mots de passe et les coordonnées bancaires. Désignez les personnes par leur fonction (« le chef de chantier », « le cabinet comptable »). Les fichiers s'envoient seulement à l'étape « Documents à envoyer ».</div>`;
 
 /* ---------- Données dérivées ---------- */
 const D = {
@@ -355,7 +376,7 @@ function renderGenevieve(){
     {k:"fiches", n:2, l:"Mes fiches pas à pas", c:(D.todoG().length ? D.todoG().length+" à valider" : S.data.fiches.length), hot:D.todoG().length>0},
     {k:"questions", n:3, l:"Questions de Florent", c:(D.qOpen().length || ""), hot:D.qOpen().length>0},
     {k:"accueilnew", n:4, l:"Accueillir un nouveau", c:S.data.accueil.length},
-    {k:"documents", n:5, l:"Documents à déposer", c:`${S.data.documents.filter(d=>d.statut==="depose").length}/${S.data.documents.length}`},
+    {k:"documents", n:5, l:"Documents à envoyer", c:`${S.data.documents.filter(d=>d.statut==="depose").length}/${S.data.documents.length}`},
   ], sec);
   bindRail("gSec");
   const P = $("#panel");
@@ -382,7 +403,7 @@ function gHome(){
       <div class="item"><div><div class="ttl">2. Mes fiches pas à pas</div><div class="meta">Pour les tâches importantes : les étapes, les cas particuliers, les pièges.</div></div><div class="acts"><button class="btn small" data-go="fiches">Ouvrir</button></div></div>
       <div class="item"><div><div class="ttl">3. Questions de Florent</div><div class="meta">Il vous pose ici ses questions entre deux séances.</div></div><div class="acts"><button class="btn small" data-go="questions">Ouvrir</button></div></div>
       <div class="item"><div><div class="ttl">4. Accueillir un nouveau</div><div class="meta">Ce qu'un nouvel arrivant vous demande toujours, et ce qu'il doit savoir la première semaine.</div></div><div class="acts"><button class="btn small" data-go="accueilnew">Ouvrir</button></div></div>
-      <div class="item"><div><div class="ttl">5. Documents à déposer</div><div class="meta">Les fichiers utiles à déposer sur le serveur de ${esc(S.client)}.</div></div><div class="acts"><button class="btn small" data-go="documents">Ouvrir</button></div></div>
+      <div class="item"><div><div class="ttl">5. Documents à envoyer</div><div class="meta">Les fichiers utiles, à m'envoyer directement depuis cette page.</div></div><div class="acts"><button class="btn small" data-go="documents">Ouvrir</button></div></div>
     </div></div>
   <div class="card"><h2>Prochaines séances avec Florent</h2>
     ${next.length ? `<div class="items">${next.map(s=>`<div class="item"><div><div class="ttl">${fmtDate(s.date)} · ${s.type==="site"?"Sur site":"En visio"}</div><div class="meta">${esc(s.objet||"")}</div></div></div>`).join("")}</div>` : `<div class="empty">Aucune séance planifiée pour l'instant.</div>`}</div>
@@ -447,14 +468,26 @@ function gAccueil(){
   ${guard()}`;
 }
 
-function gDocuments(){
+function gDocuments(){ return docsView(false); }
+function fDocuments(){ return docsView(true); }
+function docsView(owner){
   const ds = S.data.documents.slice().sort((a,b) => (a.statut==="depose"?1:0)-(b.statut==="depose"?1:0));
+  const filesOf = id => S.data.fichiers.filter(f => f.doc === id).sort((a,b) => String(a.date).localeCompare(String(b.date)));
+  const known = new Set(ds.map(d => d.id));
+  const orphans = S.data.fichiers.filter(f => !known.has(f.doc));
+  const fileLine = f => `<div class="row spread" style="margin-top:6px;gap:8px"><span class="meta">📎 ${esc(f.nom || f.fichier)} · ${f.taille ? fmtSize(f.taille) : ""} · ${fmtDate(f.date)}${owner ? ` · envoyé par ${f.par === "florent" ? "vous" : esc(G())}` : ""}</span>
+      ${owner ? `<span class="row">${f.lien ? `<a class="btn small" href="${esc(f.lien)}" target="_blank" rel="noopener">Ouvrir</a>` : ""}<button class="btn small ghost" data-unlist="${esc(f.id)}">Retirer de la liste</button></span>` : ""}</div>`;
   return `
-  <div class="card"><div class="row spread"><h1>5. Documents à déposer</h1><button class="btn small" data-new-doc>Ajouter un document</button></div>
-    <p class="intro">Ces fichiers ne s'envoient pas ici : déposez-les dans le dossier convenu sur le serveur de ${esc(S.client)}, puis cochez-les en indiquant où ils se trouvent.</p></div>
-  <div class="items">${ds.length ? ds.map(d => `<div class="item"><div><div class="ttl">${esc(d.nom)}</div><div class="meta">${esc(d.utilite||"")}${d.emplacement?` · ${esc(d.emplacement)}`:""}</div>
-    <div class="row" style="margin-top:4px"><span class="pill ${d.statut==="depose"?"st-validee":"st-a_ecrire"}">${d.statut==="depose"?"Déposé":"À déposer"}</span></div></div>
-    <div class="acts"><button class="btn small" data-edit-doc="${d.id}">${d.statut==="depose"?"Modifier":"Marquer déposé"}</button></div></div>`).join("") : `<div class="empty">Aucun document demandé pour l'instant.</div>`}</div>`;
+  <div class="card"><div class="row spread"><h1>${owner ? "Documents reçus" : "5. Documents à envoyer"}</h1><button class="btn small" data-new-doc>Ajouter un document</button></div>
+    ${owner
+      ? `<p class="intro">Les fichiers envoyés depuis la page arrivent dans votre Drive, dossier 09-Lot1-documents-recus. « Retirer de la liste » ne supprime pas le fichier du Drive.</p>`
+      : `<p class="intro">Pour chaque document, cliquez sur « Envoyer un fichier » : il part directement chez Florent. Vous pouvez en envoyer plusieurs. 15 Mo au plus par fichier ; au-delà, apportez-le sur clé USB à la prochaine séance.</p>
+    <div class="guard"><b>Avant d'envoyer :</b> remplacez les noms des salariés (par exemple « Salarié 1 », « Salarié 2 ») et effacez les coordonnées bancaires. Ne joignez ni mot de passe ni document de paie. Si vous vous trompez de fichier, dites-le à Florent : il le supprimera.</div>`}</div>
+  <div class="items">${ds.length ? ds.map(d => { const fs = filesOf(d.id); return `<div class="item"><div style="flex:1"><div class="ttl">${esc(d.nom)}</div><div class="meta">${esc(d.utilite||"")}${d.emplacement?` · ${esc(d.emplacement)}`:""}</div>
+    <div class="row" style="margin-top:4px"><span class="pill ${d.statut==="depose"?"st-validee":"st-a_ecrire"}">${d.statut==="depose"?(fs.length ? `Envoyé · ${fs.length} fichier${fs.length>1?"s":""}` : "Fourni autrement"):"À envoyer"}</span></div>
+    ${fs.map(fileLine).join("")}</div>
+    <div class="acts"><label class="btn small primary" style="cursor:pointer">Envoyer un fichier<input type="file" data-upload="${esc(d.id)}" hidden></label><button class="btn small" data-edit-doc="${d.id}">Modifier</button></div></div>`; }).join("") : `<div class="empty">Aucun document demandé pour l'instant.</div>`}</div>
+  ${owner && orphans.length ? `<div class="card"><h2>Fichiers sans document</h2><p class="intro">Le document auquel ils étaient rattachés a été supprimé.</p>${orphans.map(fileLine).join("")}</div>` : ""}`;
 }
 
 /* =======================================================
@@ -470,12 +503,13 @@ function renderFlorent(){
     {k:"questions", l:"Questions", c:(answered ? answered+" réponses" : D.qOpen().length||""), hot:answered>0},
     {k:"seances", l:"Séances", c:`${D.siteCount()}/${MAX_SITE} sur site`},
     {k:"nomenclature", l:"Correspondance B21", c:S.data.nomenclature.length},
+    {k:"documents", l:"Documents reçus", c:S.data.fichiers.length||""},
     "-",
     {k:"prive", l:"Notes privées", c:S.data.prive.length||""},
     {k:"export", l:"Export des livrables"},
   ], sec);
   bindRail("fSec");
-  const map = {bord:fBord, relecture:fRelecture, activites:fActivites, questions:fQuestions, seances:fSeances, nomenclature:fNomenclature, prive:fPrive, export:fExport};
+  const map = {bord:fBord, relecture:fRelecture, activites:fActivites, questions:fQuestions, seances:fSeances, nomenclature:fNomenclature, prive:fPrive, export:fExport, documents:fDocuments};
   $("#panel").innerHTML = errBox() + (map[sec] || fBord)();
   bindPanel();
 }
@@ -601,7 +635,7 @@ function buildExport(){
 }
 function fExport(){
   const md = buildExport();
-  return `<div class="card"><h1>Export des livrables</h1><p class="intro">Les livrables du lot 1 assemblés à partir de l'espace, en Markdown (format ouvert). « Déposer dans mon Drive » crée un fichier daté dans votre dossier ${esc(S.client)}, sous-dossier 08-Lot1-exports-espace. Les fiches mises au propre reprennent votre version ; les autres, les notes brutes de Geneviève avec leur statut.</p>
+  return `<div class="card"><h1>Export des livrables</h1><p class="intro">Les livrables du lot 1 assemblés à partir de l'espace, en Markdown (format ouvert). « Déposer dans mon Drive » crée un fichier daté dans votre dossier ${esc(S.client)}, sous-dossier 08-Lot1-exports-espace. Les fiches mises au propre reprennent votre version ; les autres, les notes brutes de ${esc(G())} avec leur statut.</p>
     <div class="row"><button class="btn primary" data-todrive>Déposer dans mon Drive</button><button class="btn" data-copy>Copier</button><button class="btn" data-download>Télécharger le fichier .md</button></div><div id="drive-out"></div></div>
     <pre class="md" id="md-out">${esc(md)}</pre>`;
 }
@@ -768,11 +802,10 @@ function editDocument(id){
   openSheet(`<h2>${id ? esc(d.nom) : "Ajouter un document"}</h2>
     ${fld("d-nom","Document","",`<input id="d-nom" value="${esc(d.nom)}">`)}
     ${fld("d-ut","À quoi il sert","",`<input id="d-ut" value="${esc(d.utilite)}">`)}
-    ${fld("d-emp","Où il est déposé sur le serveur","Le chemin du dossier, sans envoyer le fichier ici.",`<input id="d-emp" value="${esc(d.emplacement)}">`)}
-    ${fld("d-st","État","",`<select id="d-st"><option value="a_deposer"${d.statut!=="depose"?" selected":""}>À déposer</option><option value="depose"${d.statut==="depose"?" selected":""}>Déposé</option></select>`)}
+    ${fld("d-emp","Précision","Facultatif. Ex. la période choisie, ou « remis sur clé USB le 25/11 ».",`<input id="d-emp" value="${esc(d.emplacement)}">`)}
+    ${fld("d-st","État","Passe tout seul à « Envoyé » dès qu'un fichier est envoyé.",`<select id="d-st"><option value="a_deposer"${d.statut!=="depose"?" selected":""}>À envoyer</option><option value="depose"${d.statut==="depose"?" selected":""}>Envoyé ou fourni autrement</option></select>`)}
     <div class="row spread"><div>${id?`<button class="btn ghost" data-del>Supprimer</button>`:""}</div><div class="row"><button class="btn" data-cancel>Annuler</button><button class="btn primary" data-ok>Enregistrer</button></div></div>`,
   sh => {
-    if(id && d.statut !== "depose") sh.querySelector("#d-st").value = "depose";
     sh.querySelector("[data-cancel]").onclick = closeSheet;
     const del = sh.querySelector("[data-del]"); if(del) del.onclick = async () => { if(del.dataset.c){ await remove("documents", id); closeSheet(); } else { del.dataset.c="1"; del.textContent="Confirmer la suppression"; } };
     sh.querySelector("[data-ok]").onclick = async () => { const n = val("d-nom"); if(!n){ toast("Nom du document manquant."); return; } if(await save("documents", id || newId(), {nom:n, utilite:val("d-ut"), emplacement:val("d-emp"), statut:val("d-st")}, !id)){ closeSheet(); toast("Enregistré"); } };
@@ -827,6 +860,15 @@ function bindPanel(){
   on("[data-edit-acc]", el => editAccueil(el.dataset.editAcc));
   on("[data-new-doc]", () => editDocument(null));
   on("[data-edit-doc]", el => editDocument(el.dataset.editDoc));
+  P.querySelectorAll("[data-upload]").forEach(inp => inp.onchange = async () => {
+    const file = inp.files && inp.files[0]; if(!file) return;
+    if(S.busy){ toast("Un envoi est déjà en cours."); return; }
+    S.busy = true; document.body.style.cursor = "progress";
+    const lab = inp.closest("label"); if(lab) lab.firstChild.textContent = "Envoi en cours…";
+    try { if(await upload(inp.dataset.upload, file)) toast("Fichier envoyé à Florent"); }
+    finally { S.busy = false; document.body.style.cursor = ""; render(); }
+  });
+  on("[data-unlist]", async el => { if(el.dataset.c){ await remove("fichiers", el.dataset.unlist); } else { el.dataset.c="1"; el.textContent="Confirmer"; } });
   on("[data-ask]", async () => { const q = val("q-new"); if(!q){ toast("La question est vide."); return; } if(await save("questions", newId(), {question:q, livrable:val("q-liv"), statut:"ouverte"}, true)){ const el = document.getElementById("q-new"); if(el) el.value = ""; toast("Question posée"); } });
   on("[data-closeq]", async el => { await save("questions", el.dataset.closeq, {statut:"close"}, false); });
   on("[data-delq]", async el => { if(el.dataset.c){ await remove("questions", el.dataset.delq); } else { el.dataset.c="1"; el.textContent="Confirmer"; } });
