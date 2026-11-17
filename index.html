@@ -199,7 +199,17 @@ async function api(payload){
 }
 const REFUS = { code:"Votre code n'est plus valable. Reconnectez-vous.", droits:"Cette partie est réservée à Florent.", taille:"Ce texte est trop long pour être enregistré en une fois.", requete:"La demande n'a pas été comprise." };
 
+/* Un seul enregistrement à la fois : un double clic ne crée pas de doublon. */
 async function save(col, id, data, isNew){
+  if(S.busy) return false;
+  S.busy = true;
+  const btns = [...document.querySelectorAll("#layer button, #panel button")];
+  btns.forEach(b => b.disabled = true);
+  document.body.style.cursor = "progress";
+  try { return await saveNow(col, id, data, isNew); }
+  finally { S.busy = false; btns.forEach(b => b.disabled = false); document.body.style.cursor = ""; }
+}
+async function saveNow(col, id, data, isNew){
   const prev = S.data[col].find(d => d.id === id) || {};
   const doc = Object.assign({}, prev, data, { updatedAt: nowIso(), updatedBy: role() });
   if(isNew){ doc.createdAt = nowIso(); doc.createdBy = role(); }
